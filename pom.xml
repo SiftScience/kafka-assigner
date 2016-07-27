@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>siftscience</groupId>
+  <artifactId>kafka-assigner</artifactId>
+  <packaging>jar</packaging>
+  <version>1.0</version>
+
+  <name>kafka-assigner</name>
+  <description>Tools for reassigning Kafka partitions with minimal movement</description>
+  <url>http://maven.apache.org</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.8.1</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>args4j</groupId>
+      <artifactId>args4j</artifactId>
+      <version>2.0.29</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>13.0.1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.json</groupId>
+      <artifactId>json</artifactId>
+      <version>20131018</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>3.1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka_2.11</artifactId>
+      <version>0.10.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-clients</artifactId>
+      <version>0.10.0.0</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <defaultGoal>clean install</defaultGoal>
+    <plugins>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>appassembler-maven-plugin</artifactId>
+        <version>1.1.1</version>
+        <configuration>
+          <binFileExtensions>
+            <unix>.sh</unix>
+          </binFileExtensions>
+          <!-- Set the target configuration directory to be used in the bin scripts -->
+          <configurationDirectory>conf</configurationDirectory>
+          <!-- Copy the contents from "/src/main/config" to the target configuration directory in the assembled application -->
+          <copyConfigurationDirectory>true</copyConfigurationDirectory>
+          <!-- Include the target configuration directory in the beginning of the classpath declaration in the bin scripts -->
+          <includeConfigurationDirectoryInClasspath>true</includeConfigurationDirectoryInClasspath>
+          <assembleDirectory>${project.build.directory}/${project.artifactId}-pkg</assembleDirectory>
+          <!-- Extra JVM arguments that will be included in the bin scripts -->
+          <extraJvmArguments>-Xms512m -Xmx512m</extraJvmArguments>
+          <!-- Generate bin scripts for windows and unix pr default -->
+          <platforms>
+            <platform>windows</platform>
+            <platform>unix</platform>
+          </platforms>
+          <programs>
+            <program>
+              <mainClass>siftscience.kafka.tools.KafkaAssignmentGenerator</mainClass>
+              <name>kafka-assignment-generator</name>
+            </program>
+          </programs>
+          </configuration>
+          <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>assemble</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-assembly-plugin</artifactId>
+          <version>2.3</version>
+          <configuration>
+            <descriptors>
+              <descriptor>${project.basedir}/src/assemble/assembly.xml</descriptor>
+            </descriptors>
+          </configuration>
+          <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>single</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.0</version>
+            <configuration>
+                <source>1.5</source>
+                <target>1.5</target>
+            </configuration>
+        </plugin>
+    </plugins>
+  </build>
+
+</project>
