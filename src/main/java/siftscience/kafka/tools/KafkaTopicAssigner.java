@@ -35,15 +35,18 @@ public class KafkaTopicAssigner {
      *                          in each list is the "leader" replica for a partition.
      * @param brokers a list of broker IDs as strings
      * @param rackAssignment a map from broker ID to rack ID if a rack is defined for that broker
+     * @param desiredReplicationFactor used to change replication factor, use -1 to keep the same as
+     *                                 the original topic
      * @return the new assignment: a map from partition ID to ordered list of broker IDs
      */
     public Map<Integer, List<Integer>> generateAssignment(
             String topic, Map<Integer, List<Integer>> currentAssignment, Set<Integer> brokers,
-            Map<Integer, String> rackAssignment) {
+            Map<Integer, String> rackAssignment, int desiredReplicationFactor) {
         // We need to do 2 things:
         //  - Get the set of partitions as integers
         //  - Figure out the replication factor (which should be the same for each partition)
-        int replicationFactor = -1;
+        // if desiredReplicationFactor is negative
+        int replicationFactor = desiredReplicationFactor;
         Set<Integer> partitions = Sets.newTreeSet();
         for (Map.Entry<Integer, List<Integer>> entry : currentAssignment.entrySet()) {
             int partition = entry.getKey();
@@ -51,7 +54,7 @@ public class KafkaTopicAssigner {
             partitions.add(partition);
             if (replicationFactor < 0) {
                 replicationFactor = replicas.size();
-            } else {
+            } else if (desiredReplicationFactor < 0) {
                 Preconditions.checkState(replicationFactor == replicas.size(),
                         "Topic " + topic + " has partition " + partition +
                                 " with unexpected replication factor " + replicas.size());

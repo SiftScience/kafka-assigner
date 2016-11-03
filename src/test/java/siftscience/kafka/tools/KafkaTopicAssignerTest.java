@@ -35,7 +35,7 @@ public class KafkaTopicAssignerTest {
         );
         KafkaTopicAssigner assigner = new KafkaTopicAssigner();
         Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, rackAssignments);
+                topic, currentAssignment, newBrokers, rackAssignments, -1);
 
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
                 currentAssignment, newAssignment, 1);
@@ -68,7 +68,7 @@ public class KafkaTopicAssignerTest {
         Set<Integer> newBrokers = ImmutableSet.of(10, 11, 12, 13);
         KafkaTopicAssigner assigner = new KafkaTopicAssigner();
         Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap());
+                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap(), -1);
 
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
                 currentAssignment, newAssignment, 1);
@@ -93,7 +93,7 @@ public class KafkaTopicAssignerTest {
         Set<Integer> newBrokers = ImmutableSet.of(10, 11, 13);
         KafkaTopicAssigner assigner = new KafkaTopicAssigner();
         Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap());
+                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap(), -1);
 
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
                 currentAssignment, newAssignment, 1);
@@ -133,7 +133,7 @@ public class KafkaTopicAssignerTest {
         Set<Integer> newBrokers = ImmutableSet.of(10, 11, 13);
         KafkaTopicAssigner assigner = new KafkaTopicAssigner();
         Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap());
+                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap(),-1);
 
         // run basic sanity checks
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
