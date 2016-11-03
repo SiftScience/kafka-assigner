@@ -5,7 +5,7 @@
   <groupId>siftscience</groupId>
   <artifactId>kafka-assigner</artifactId>
   <packaging>jar</packaging>
-  <version>1.0</version>
+  <version>1.1</version>
 
   <name>kafka-assigner</name>
   <description>Tools for reassigning Kafka partitions with minimal movement</description>

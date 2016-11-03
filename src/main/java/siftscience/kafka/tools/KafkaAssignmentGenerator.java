@@ -75,6 +75,10 @@ public class KafkaAssignmentGenerator {
             usage = "comma-separated list of topics")
     private String topics = null;
 
+    @Option(name = "--desired_replication_factor",
+            usage = "used for changing replication factor for topics, if not present it will use the existing number")
+    private int desiredReplicationFactor = -1;
+
     @Option(name = "--disable_rack_awareness",
             usage = "set to true to ignore rack configurations")
     private boolean disableRackAwareness = false;
@@ -126,7 +130,7 @@ public class KafkaAssignmentGenerator {
 
     private static void printLeastDisruptiveReassignment(
             ZkUtils zkUtils, List<String> specifiedTopics, Set<Integer> specifiedBrokers,
-            Set<Integer> excludedBrokers, Map<Integer, String> rackAssignment)
+            Set<Integer> excludedBrokers, Map<Integer, String> rackAssignment, int desiredReplicationFactor)
             throws JSONException {
         // We need three inputs for rebalacing: the brokers, the topics, and the current assignment
         // of topics to brokers.
@@ -169,7 +173,7 @@ public class KafkaAssignmentGenerator {
         for (String topic : JavaConversions.seqAsJavaList(topics)) {
             Map<Integer, List<Integer>> partitionAssignment = initialAssignments.get(topic);
             Map<Integer, List<Integer>> finalAssignment = assigner.generateAssignment(
-                    topic, partitionAssignment, brokers, rackAssignment);
+                    topic, partitionAssignment, brokers, rackAssignment, desiredReplicationFactor);
             for (Map.Entry<Integer, List<Integer>> e : finalAssignment.entrySet()) {
                 JSONObject partitionJson = new JSONObject();
                 partitionJson.put("topic", topic);
@@ -284,7 +288,7 @@ public class KafkaAssignmentGenerator {
                     break;
                 case PRINT_REASSIGNMENT:
                     printLeastDisruptiveReassignment(zkUtils, topics, brokerIdSet,
-                            excludedBrokerIdSet, rackAssignment);
+                            excludedBrokerIdSet, rackAssignment, desiredReplicationFactor);
                     break;
                 default:
                     throw new UnsupportedOperationException("Invalid mode: " + mode);
