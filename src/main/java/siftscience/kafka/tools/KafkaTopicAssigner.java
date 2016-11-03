@@ -54,7 +54,7 @@ public class KafkaTopicAssigner {
             partitions.add(partition);
             if (replicationFactor < 0) {
                 replicationFactor = replicas.size();
-            } else if (desiredReplicationFactor<0) {
+            } else if (desiredReplicationFactor < 0) {
                 Preconditions.checkState(replicationFactor == replicas.size(),
                         "Topic " + topic + " has partition " + partition +
                                 " with unexpected replication factor " + replicas.size());
