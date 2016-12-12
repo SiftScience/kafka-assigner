@@ -1,0 +1,9 @@
+dependencies:
+  cache_directories:
+    - ~/.m2
+  override:
+    - mvn -q -e clean dependency:resolve
+
+test:
+  override:
+    - mvn -q -e test
