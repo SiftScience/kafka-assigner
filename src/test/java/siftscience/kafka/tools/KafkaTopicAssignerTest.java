@@ -85,6 +85,11 @@ public class KafkaTopicAssignerTest {
     @Test
     public void testClusterRebalance() {
         String topic = "test";
+        // We have 3 brokers: {#10,#11,#12} and a topic with 6 partitions; each partition is replicated
+        // twice, so a total load of 12 replicas.
+        // Two of the brokers: {#10,#11} have a replica of all of the partitions, while the last broker,
+        // #12, has none. Generate an even assignment of these partitions, where each broker has
+        // four of the 12 total replicas.
         Map<Integer, List<Integer>> currentAssignment = new HashMap<Integer, List<Integer>>();
         currentAssignment.put(0, ImmutableList.of(10, 11));
         currentAssignment.put(1, ImmutableList.of(10,11));
