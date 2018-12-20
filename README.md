@@ -19,8 +19,8 @@ This tool uses a strategy that behaves similarly to [Apache Helix](http://helix.
 
 ## Get the tool
 1. Download from the "Releases" page
-2. `tar xf kafka-assigner-1.0-pkg.tar`
-3. `cd kafka-assigner-1.0/bin`
+2. `tar xf kafka-assigner-1.1-pkg.tar`
+3. `cd kafka-assigner-1.1/bin`
 
 ## Run the tool
 Requires Java 1.7+
