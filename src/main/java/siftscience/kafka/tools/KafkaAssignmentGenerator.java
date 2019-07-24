@@ -141,8 +141,6 @@ public class KafkaAssignmentGenerator {
                         return node.id();
                     }
                 }));
-                // Sort the replicas for nice, diff-able output
-                Collections.sort(replicas);
                 partitionToReplicas.put(tp.partition(), replicas);
             }
             result.put(topicDescription.name(), partitionToReplicas);
@@ -195,8 +193,6 @@ public class KafkaAssignmentGenerator {
                 JSONObject partitionJson = new JSONObject();
                 partitionJson.put("topic", topic);
                 partitionJson.put("partition", e.getKey());
-                // Sort the replicas for nice, diff-able output
-                Collections.sort(e.getValue());
                 partitionJson.put("replicas", new JSONArray(e.getValue()));
                 partitionsJson.put(partitionJson);
             }
