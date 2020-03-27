@@ -19,7 +19,7 @@ public class KafkaTopicAssignerTest {
     public void testRackAwareExpansion() {
         String topic = "test";
         Map<Integer, List<Integer>> currentAssignment = ImmutableMap.of(
-                0, (List<Integer>) ImmutableList.of(10, 11),
+                0, ImmutableList.of(10, 11),
                 1, ImmutableList.of(11, 12),
                 2, ImmutableList.of(12, 10),
                 3, ImmutableList.of(10, 12)
@@ -33,9 +33,10 @@ public class KafkaTopicAssignerTest {
                 13, "a",
                 14, "b"
         );
-        KafkaTopicAssigner assigner = new KafkaTopicAssigner();
-        Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, rackAssignments, -1);
+        MinimalMovementStrategy assigner =
+                new MinimalMovementStrategy(newBrokers, rackAssignments, -1);
+        Map<Integer, List<Integer>> newAssignment =
+                assigner.generateAssignment(topic, currentAssignment);
 
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
                 currentAssignment, newAssignment, 1);
@@ -58,17 +59,19 @@ public class KafkaTopicAssignerTest {
 
     @Test
     public void testClusterExpansion() {
+        Set<Integer> newBrokers = ImmutableSet.of(10, 11, 12, 13);
         String topic = "test";
         Map<Integer, List<Integer>> currentAssignment = ImmutableMap.of(
-                0, (List<Integer>) ImmutableList.of(10, 11),
+                0, ImmutableList.of(10, 11),
                 1, ImmutableList.of(11, 12),
                 2, ImmutableList.of(12, 10),
                 3, ImmutableList.of(10, 12)
         );
-        Set<Integer> newBrokers = ImmutableSet.of(10, 11, 12, 13);
-        KafkaTopicAssigner assigner = new KafkaTopicAssigner();
-        Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap(), -1);
+
+        MinimalMovementStrategy assigner =
+                new MinimalMovementStrategy(newBrokers, Collections.emptyMap(), -1);
+        Map<Integer, List<Integer>> newAssignment =
+                assigner.generateAssignment(topic, currentAssignment);
 
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
                 currentAssignment, newAssignment, 1);
@@ -85,15 +88,16 @@ public class KafkaTopicAssignerTest {
     public void testDecommission() {
         String topic = "test";
         Map<Integer, List<Integer>> currentAssignment = ImmutableMap.of(
-                0, (List<Integer>) ImmutableList.of(10, 11),
+                0, ImmutableList.of(10, 11),
                 1, ImmutableList.of(11, 12),
                 2, ImmutableList.of(12, 13),
                 3, ImmutableList.of(13, 10)
         );
         Set<Integer> newBrokers = ImmutableSet.of(10, 11, 13);
-        KafkaTopicAssigner assigner = new KafkaTopicAssigner();
-        Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap(), -1);
+        MinimalMovementStrategy assigner =
+                new MinimalMovementStrategy( newBrokers, Collections.emptyMap(), -1);
+        Map<Integer, List<Integer>> newAssignment =
+                assigner.generateAssignment(topic, currentAssignment);
 
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
                 currentAssignment, newAssignment, 1);
@@ -125,15 +129,16 @@ public class KafkaTopicAssignerTest {
     public void testReplacement() {
         String topic = "test";
         Map<Integer, List<Integer>> currentAssignment = ImmutableMap.of(
-                0, (List<Integer>) ImmutableList.of(10, 11),
+                0, ImmutableList.of(10, 11),
                 1, ImmutableList.of(11, 12),
                 2, ImmutableList.of(12, 10),
                 3, ImmutableList.of(10, 12)
         );
         Set<Integer> newBrokers = ImmutableSet.of(10, 11, 13);
-        KafkaTopicAssigner assigner = new KafkaTopicAssigner();
-        Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
-                topic, currentAssignment, newBrokers, Collections.<Integer, String>emptyMap(),-1);
+        MinimalMovementStrategy assigner =
+                new MinimalMovementStrategy(newBrokers, Collections.emptyMap(),-1);
+        Map<Integer, List<Integer>> newAssignment =
+                assigner.generateAssignment(topic, currentAssignment);
 
         // run basic sanity checks
         Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(

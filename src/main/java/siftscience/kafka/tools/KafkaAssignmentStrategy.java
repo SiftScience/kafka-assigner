@@ -1,7 +1,5 @@
 package siftscience.kafka.tools;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +10,10 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.sift.kafka.tools.partitionassigner.Node;
+import com.sift.kafka.tools.partitionassigner.NodeProcessingOrder;
+import com.sift.kafka.tools.partitionassigner.PreferenceListOrderTracker;
+import com.sift.kafka.tools.partitionassigner.Rack;
 
 /**
  * A Kafka-specific assignment strategy that takes into account rack-awareness.
@@ -165,14 +167,13 @@ public class KafkaAssignmentStrategy {
         // Don't process nodes in the same order for all topics to ensure that topics with fewer
         // replicas than nodes are equally likely to be assigned anywhere (and not overload the
         // brokers with earlier IDs).
-        Integer[] nodeProcessingOrder = getNodeProcessingOrder(topicName, nodeMap.keySet());
-        List<Integer> nodeProcessingOrderList = Arrays.asList(nodeProcessingOrder);
+        List<Integer> nodeProcessingOrder = new NodeProcessingOrder(topicName).get(nodeMap);
 
         // Assign unassigned replicas to nodes that can accept them
         for (Map.Entry<Integer, Integer> e : orphanedReplicas.entrySet()) {
             int partition = e.getKey();
             int remainingReplicas = e.getValue();
-            Iterator<Integer> nodeIt = nodeProcessingOrderList.iterator();
+            Iterator<Integer> nodeIt = nodeProcessingOrder.iterator();
             while (nodeIt.hasNext() && remainingReplicas > 0) {
                 Node node = nodeMap.get(nodeIt.next());
                 if (node.canAccept(partition)) {
@@ -185,20 +186,6 @@ public class KafkaAssignmentStrategy {
         }
     }
 
-    private static Integer[] getNodeProcessingOrder(String topicName, Collection<Integer> nodeIds) {
-        Integer[] nodeProcessingOrder = new Integer[nodeIds.size()];
-        int index = Math.abs(topicName.hashCode()) % nodeProcessingOrder.length;
-        for (int nodeId : nodeIds) {
-            nodeProcessingOrder[index] = nodeId;
-
-            // move the pointer forward, but wrap around if at the end
-            if (++index == nodeProcessingOrder.length) {
-                index = 0;
-            }
-        }
-        return nodeProcessingOrder;
-    }
-
     private static Map<Integer, List<Integer>> computePreferenceLists(
             String topicName, Map<Integer, Node> nodeMap, Context context) {
         // First, get unordered assignment lists from the nodes
@@ -207,7 +194,7 @@ public class KafkaAssignmentStrategy {
             int nodeId = node.id;
             for (int partition : node.assignedPartitions) {
                 if (!unorderedPreferences.containsKey(partition)) {
-                    unorderedPreferences.put(partition, Lists.<Integer>newArrayList());
+                    unorderedPreferences.put(partition, Lists.newArrayList());
                 }
                 unorderedPreferences.get(partition).add(nodeId);
             }
@@ -236,122 +223,6 @@ public class KafkaAssignmentStrategy {
             balanceLeadersTracker.updateCountersFromList(orderedPreferenceList);
         }
         return preferences;
-    }
-
-    /**
-     * Keep track of which replica IDs need more coverage for this topic.
-     */
-    private static class PreferenceListOrderTracker {
-        private final String topicName;
-        private final Map<Integer, Map<Integer, Integer>> nodeAssignmentCounters;
-
-        public PreferenceListOrderTracker(
-                String topicName, Map<Integer, Map<Integer, Integer>> nodeAssignmentCounters) {
-            this.topicName = topicName;
-            this.nodeAssignmentCounters = nodeAssignmentCounters;
-        }
-
-        public void updateCountersFromList(List<Integer> preferences) {
-            // Also give fallback leaders a higher weight than the ends of the lists since we want
-            // to evenly distribute fallbacks.
-            int replica = 0;
-            for (int nodeId : preferences) {
-                incrementCountSafe(nodeId, replica++);
-            }
-        }
-
-        public int getLeastSeenNodeForReplicaId(int replicaId, Set<Integer> nodes) {
-            // For a given replica, figure out which node of the ones provided is least represented
-            Integer minCount = null;
-            Integer minNode = null;
-            Integer[] nodeProcessingOrder = getNodeProcessingOrder(topicName, nodes);
-            for (int nodeId : nodeProcessingOrder) {
-                int count = getCountSafe(nodeId, replicaId);
-                if (minCount == null || count < minCount) {
-                    minCount = count;
-                    minNode = nodeId;
-                }
-            }
-            Preconditions.checkNotNull(minCount);
-            Preconditions.checkNotNull(minNode);
-            return minNode;
-        }
-
-        private int getCountSafe(int nodeId, int replicaId) {
-            return ensureCount(nodeId, replicaId);
-        }
-
-        private void incrementCountSafe(int nodeId, int replicaId) {
-            int currentCount = ensureCount(nodeId, replicaId);
-            nodeAssignmentCounters.get(nodeId).put(replicaId, currentCount + 1);
-        }
-
-        private int ensureCount(int nodeId, int replicaId) {
-            Map<Integer, Integer> replicaCount = nodeAssignmentCounters.get(nodeId);
-            if (replicaCount == null) {
-                replicaCount = Maps.newHashMap();
-                nodeAssignmentCounters.put(nodeId, replicaCount);
-            }
-            Integer currentCount = replicaCount.get(replicaId);
-            if (currentCount == null) {
-                currentCount = 0;
-                replicaCount.put(replicaId, currentCount);
-            }
-            return currentCount;
-        }
-    }
-
-    /**
-     * Helper class to track assigned partitions and the rack it lives on.
-     */
-    private static class Node {
-        public final int id;
-        public final int capacity;
-        public final Rack rack;
-        public final Set<Integer> assignedPartitions;
-
-        public Node(int id, int capacity, Rack rack) {
-            this.id = id;
-            this.capacity = capacity;
-            this.rack = rack;
-            this.assignedPartitions = Sets.newTreeSet();
-        }
-
-        public boolean canAccept(int partition) {
-            return !assignedPartitions.contains(partition) &&
-                    assignedPartitions.size() < capacity &&
-                    rack.canAccept(partition);
-        }
-
-        public void accept(int partition) {
-            Preconditions.checkArgument(canAccept(partition),
-                    "Attempted to accept unacceptable partition " + partition);
-            assignedPartitions.add(partition);
-            rack.accept(partition);
-        }
-    }
-
-    /**
-     * Helper class to track what is assigned to a given rack.
-     */
-    private static class Rack {
-        public final String id;
-        public final Set<Integer> assignedPartitions;
-
-        public Rack(String id) {
-            this.id = id;
-            this.assignedPartitions = Sets.newTreeSet();
-        }
-
-        public boolean canAccept(int partition) {
-            return !assignedPartitions.contains(partition);
-        }
-
-        public void accept(int partition) {
-            Preconditions.checkArgument(canAccept(partition),
-                    "Attempted to accept unacceptable partition " + partition);
-            assignedPartitions.add(partition);
-        }
     }
 
     /**
