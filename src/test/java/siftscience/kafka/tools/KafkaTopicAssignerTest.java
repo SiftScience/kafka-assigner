@@ -3,6 +3,7 @@ package siftscience.kafka.tools;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Set;
 
 import com.google.common.collect.ImmutableList;
@@ -82,14 +83,43 @@ public class KafkaTopicAssignerTest {
     }
 
     @Test
+    public void testClusterRebalance() {
+        String topic = "test";
+        // We have 3 brokers: {#10,#11,#12} and a topic with 6 partitions; each partition is replicated
+        // twice, so a total load of 12 replicas.
+        // Two of the brokers: {#10,#11} have a replica of all of the partitions, while the last broker,
+        // #12, has none. Generate an even assignment of these partitions, where each broker has
+        // four of the 12 total replicas.
+        Map<Integer, List<Integer>> currentAssignment = new HashMap<Integer, List<Integer>>();
+        currentAssignment.put(0, ImmutableList.of(10, 11));
+        currentAssignment.put(1, ImmutableList.of(10,11));
+        currentAssignment.put(2, ImmutableList.of(10,11));
+        currentAssignment.put(3, ImmutableList.of(10,11));
+        currentAssignment.put(4, ImmutableList.of(10,11));
+        currentAssignment.put(5, ImmutableList.of(10,11));
+
+        Set<Integer> brokers = ImmutableSet.of(10,11, 12);
+        KafkaTopicAssigner assigner = new KafkaTopicAssigner();
+        Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
+                topic, currentAssignment, brokers, Collections.<Integer, String>emptyMap(), 2);
+        Map<Integer, Integer> brokerReplicaCounts = verifyPartitionsAndBuildReplicaCounts(
+                currentAssignment, newAssignment, 1);
+        for (Map.Entry<Integer, Integer> brokerCount: brokerReplicaCounts.entrySet()) {
+            Assert.assertEquals(4, (int) brokerCount.getValue());
+        }
+    }
+
+    @Test
     public void testDecommission() {
         String topic = "test";
+        // We start with 4 brokers: {10,11,12,13}..
         Map<Integer, List<Integer>> currentAssignment = ImmutableMap.of(
                 0, (List<Integer>) ImmutableList.of(10, 11),
                 1, ImmutableList.of(11, 12),
                 2, ImmutableList.of(12, 13),
                 3, ImmutableList.of(13, 10)
         );
+        // .. and decommission one of them (12), so the new broker set is {10,11,13}.
         Set<Integer> newBrokers = ImmutableSet.of(10, 11, 13);
         KafkaTopicAssigner assigner = new KafkaTopicAssigner();
         Map<Integer, List<Integer>> newAssignment = assigner.generateAssignment(
