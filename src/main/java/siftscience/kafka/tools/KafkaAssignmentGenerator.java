@@ -1,35 +1,22 @@
 package siftscience.kafka.tools;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-
-import kafka.cluster.Broker;
-import kafka.cluster.BrokerEndPoint;
-import kafka.utils.ZKStringSerializer$;
-import kafka.utils.ZkUtils;
-
-import org.I0Itec.zkclient.ZkClient;
+import com.google.common.collect.*;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.TopicDescription;
+import org.apache.kafka.common.Node;
+import org.apache.kafka.common.TopicPartitionInfo;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 
-import scala.collection.JavaConversions;
-import scala.collection.Seq;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Prints assignments of topic partition replicas to brokers.
@@ -39,7 +26,7 @@ import scala.collection.Seq;
  * Usage:
  * <code>
  *     bin/kafka-assignment-generator.sh
- *     --zk_string zkhost:2181
+ *     --bootstrap_servers host1:9092
  *     --mode PRINT_REASSIGNMENT
  *     --broker_hosts host1,host2,host3
  *     --broker_hosts_to_remove misbehaving_host1
@@ -50,9 +37,9 @@ public class KafkaAssignmentGenerator {
 
     private static final Splitter SPLITTER = Splitter.on(',');
 
-    @Option(name = "--zk_string",
-            usage = "ZK quorum as comma-separated host:port pairs")
-    private String zkConnectString = null;
+    @Option(name = "--bootstrap_server",
+            usage = "Kafka Broker(s) to bootstrap connection (comma-separated host:port pairs)")
+    private String bootstrapServers = null;
 
     @Option(name = "--mode",
             usage = "the mode to run (PRINT_CURRENT_ASSIGNMENT, PRINT_CURRENT_BROKERS, " +
@@ -100,48 +87,79 @@ public class KafkaAssignmentGenerator {
         PRINT_REASSIGNMENT
     }
 
-    private static void printCurrentAssignment(ZkUtils zkUtils, List<String> specifiedTopics) {
-        Seq<String> topics = specifiedTopics != null ?
-                JavaConversions.iterableAsScalaIterable(specifiedTopics).toSeq() :
-                zkUtils.getAllTopics();
+    private static void printCurrentAssignment(AdminClient adminClient, List<String> specifiedTopics) throws ExecutionException, InterruptedException {
+        List<String> topics = specifiedTopics != null ? specifiedTopics : new ArrayList<>(adminClient.listTopics().names().get());
+        // Sort the topics for nice, diff-able output
+        Collections.sort(topics);
+        Map<String, Map<Integer, List<Integer>>> partitionAssignment = getPartitionAssignment(adminClient, topics);
+
+        JSONObject json = new JSONObject();
+        json.put("version", KAFKA_FORMAT_VERSION);
+        JSONArray partitionsJson = new JSONArray();
+        for (String topic : topics) {
+            Map<Integer, List<Integer>> partitionToReplicas = partitionAssignment.get(topic);
+            for (Integer partition : partitionToReplicas.keySet()) {
+                JSONObject partitionJson = new JSONObject();
+                partitionJson.put("topic", topic);
+                partitionJson.put("partition", partition);
+                partitionJson.put("replicas", new JSONArray(partitionToReplicas.get(partition)));
+                partitionsJson.put(partitionJson);
+            }
+        }
+        json.put("partitions", partitionsJson);
+
         System.out.println("CURRENT ASSIGNMENT:");
-        System.out.println(
-                zkUtils.formatAsReassignmentJson(zkUtils.getReplicaAssignmentForTopics(
-                        topics)));
+        System.out.println(json);
     }
 
-    private static void printCurrentBrokers(ZkUtils zkUtils) throws JSONException {
-        List<Broker> brokers = JavaConversions.seqAsJavaList(zkUtils.getAllBrokersInCluster());
+    private static void printCurrentBrokers(AdminClient adminClient) throws JSONException, ExecutionException, InterruptedException {
         JSONArray json = new JSONArray();
-        for (Broker broker : brokers) {
-            BrokerEndPoint endpoint = broker.getBrokerEndPoint(SecurityProtocol.PLAINTEXT);
+        for (Node node: adminClient.describeCluster().nodes().get()) {
             JSONObject brokerJson = new JSONObject();
-            brokerJson.put("id", broker.id());
-            brokerJson.put("host", endpoint.host());
-            brokerJson.put("port", endpoint.port());
-            if (broker.rack().isDefined()) {
-                brokerJson.put("rack", broker.rack().get());
-            }
+            brokerJson.put("id", node.id());
+            brokerJson.put("host", node.host());
+            brokerJson.put("port", node.port());
+            brokerJson.put("rack", node.rack());
             json.put(brokerJson);
         }
         System.out.println("CURRENT BROKERS:");
         System.out.println(json.toString());
     }
 
+    /**
+     * @return map from topic name to a map from partition ID to broker IDs that partition has been assigned to.
+     */
+    private static Map<String, Map<Integer, List<Integer>>> getPartitionAssignment(AdminClient adminClient, List<String> topics) throws ExecutionException, InterruptedException {
+        Map<String, TopicDescription> topicDescriptions = adminClient.describeTopics(topics).all().get();
+        Map<String, Map<Integer, List<Integer>>> result = new HashMap<>();
+        for (TopicDescription topicDescription : topicDescriptions.values()) {
+            Map<Integer, List<Integer>> partitionToReplicas = new HashMap<>();
+            for (TopicPartitionInfo tp : topicDescription.partitions()) {
+                List<Integer> replicas = new ArrayList<>(Lists.transform(tp.replicas(), new Function<Node, Integer>() {
+                    @Override
+                    public Integer apply(Node node) {
+                        return node.id();
+                    }
+                }));
+                partitionToReplicas.put(tp.partition(), replicas);
+            }
+            result.put(topicDescription.name(), partitionToReplicas);
+        }
+        return result;
+    }
+
     private static void printLeastDisruptiveReassignment(
-            ZkUtils zkUtils, List<String> specifiedTopics, Set<Integer> specifiedBrokers,
+            AdminClient adminClient, List<String> specifiedTopics, Set<Integer> specifiedBrokers,
             Set<Integer> excludedBrokers, Map<Integer, String> rackAssignment, int desiredReplicationFactor)
-            throws JSONException {
+            throws JSONException, ExecutionException, InterruptedException {
         // We need three inputs for rebalacing: the brokers, the topics, and the current assignment
         // of topics to brokers.
         Set<Integer> brokerSet = specifiedBrokers;
         if (brokerSet == null || brokerSet.isEmpty()) {
-            brokerSet = Sets.newHashSet(Lists.transform(
-                    JavaConversions.seqAsJavaList(zkUtils.getAllBrokersInCluster()),
-                    new Function<Broker, Integer>() {
-                        @Override
-                        public Integer apply(Broker broker) {
-                            return broker.id();
+            brokerSet = Sets.newHashSet(Collections2.transform(adminClient.describeCluster().nodes().get(),
+                    new Function<Node, Integer>() {
+                        public Integer apply(Node node) {
+                            return node.id();
                         }
                     }));
         }
@@ -150,18 +168,15 @@ public class KafkaAssignmentGenerator {
         Set<Integer> brokers = Sets.difference(brokerSet, excludedBrokers);
         rackAssignment.keySet().retainAll(brokers);
 
-        // The most common use case is to rebalance all topics, but explicit topic addition is also
-        // supported.
-        Seq<String> topics = specifiedTopics != null ?
-                JavaConversions.collectionAsScalaIterable(specifiedTopics).toSeq() :
-                zkUtils.getAllTopics();
+        // The most common use case is to rebalance all topics, but explicit topic addition is also supported.
+        List<String> topics = specifiedTopics != null ? specifiedTopics : new ArrayList<>(adminClient.listTopics().names().get());
+        // Sort the topics for nice, diff-able output
+        Collections.sort(topics);
 
         // Print the current assignment in case a rollback is needed
-        printCurrentAssignment(zkUtils, JavaConversions.seqAsJavaList(topics));
+        printCurrentAssignment(adminClient, topics);
 
-        Map<String, Map<Integer, List<Integer>>> initialAssignments =
-                KafkaTopicAssigner.topicMapToJavaMap(zkUtils.getPartitionAssignmentForTopics(
-                        topics));
+        Map<String, Map<Integer, List<Integer>>> initialAssignments = getPartitionAssignment(adminClient, topics);
 
         // Assign topics one at a time. This is slightly suboptimal from a packing standpoint, but
         // it's close enough to work in practice. We can also always follow it up with a Kafka
@@ -170,7 +185,7 @@ public class KafkaAssignmentGenerator {
         json.put("version", KAFKA_FORMAT_VERSION);
         JSONArray partitionsJson = new JSONArray();
         KafkaTopicAssigner assigner = new KafkaTopicAssigner();
-        for (String topic : JavaConversions.seqAsJavaList(topics)) {
+        for (String topic : topics) {
             Map<Integer, List<Integer>> partitionAssignment = initialAssignments.get(topic);
             Map<Integer, List<Integer>> finalAssignment = assigner.generateAssignment(
                     topic, partitionAssignment, brokers, rackAssignment, desiredReplicationFactor);
@@ -187,13 +202,14 @@ public class KafkaAssignmentGenerator {
     }
 
     private static Set<Integer> brokerHostnamesToBrokerIds(
-            ZkUtils zkUtils, Set<String> brokerHostnameSet, boolean checkPresence) {
-        List<Broker> brokers = JavaConversions.seqAsJavaList(zkUtils.getAllBrokersInCluster());
+            AdminClient adminClient, Set<String> brokerHostnameSet, boolean checkPresence)throws ExecutionException, InterruptedException {
+
+        Collection<Node> nodes = adminClient.describeCluster().nodes().get();
         Set<Integer> brokerIdSet = Sets.newHashSet();
-        for (Broker broker : brokers) {
-            BrokerEndPoint endpoint = broker.getBrokerEndPoint(SecurityProtocol.PLAINTEXT);
-            if (brokerHostnameSet.contains(endpoint.host())) {
-                brokerIdSet.add(broker.id());
+        for (Node node : nodes) {
+            if (brokerHostnameSet.contains(node.host())) {
+                brokerIdSet.add(node.id());
+                System.out.println(node.id());
             }
         }
         Preconditions.checkArgument(!checkPresence ||
@@ -203,12 +219,11 @@ public class KafkaAssignmentGenerator {
         return brokerIdSet;
     }
 
-    private Set<Integer> getBrokerIds(ZkUtils zkUtils) {
+    private Set<Integer> getBrokerIds(AdminClient adminClient) throws ExecutionException, InterruptedException {
         Set<Integer> brokerIdSet = Collections.emptySet();
         if (StringUtils.isNotEmpty(brokerIds)) {
             brokerIdSet = ImmutableSet.copyOf(Iterables.transform(SPLITTER
                     .split(brokerIds), new Function<String, Integer>() {
-                @Override
                 public Integer apply(String brokerId) {
                     try {
                         return Integer.parseInt(brokerId);
@@ -219,30 +234,28 @@ public class KafkaAssignmentGenerator {
             }));
         } else if (StringUtils.isNotEmpty(brokerHostnames)) {
             Set<String> brokerHostnameSet = ImmutableSet.copyOf(SPLITTER.split(brokerHostnames));
-            brokerIdSet = brokerHostnamesToBrokerIds(zkUtils, brokerHostnameSet, true);
+            brokerIdSet = brokerHostnamesToBrokerIds(adminClient, brokerHostnameSet, true);
         }
         return brokerIdSet;
     }
 
-    private Set<Integer> getExcludedBrokerIds(ZkUtils zkUtils) {
+    private Set<Integer> getExcludedBrokerIds(AdminClient adminClient) throws ExecutionException, InterruptedException {
         if (StringUtils.isNotEmpty(brokerHostnamesToReplace)) {
             Set<String> brokerHostnamesToReplaceSet = ImmutableSet.copyOf(
                     SPLITTER.split(brokerHostnamesToReplace));
             return ImmutableSet.copyOf(
-                    brokerHostnamesToBrokerIds(zkUtils, brokerHostnamesToReplaceSet, false));
+                    brokerHostnamesToBrokerIds(adminClient, brokerHostnamesToReplaceSet, false));
 
         }
         return Collections.emptySet();
     }
 
-    private Map<Integer, String> getRackAssignment(ZkUtils zkUtils) {
-        List<Broker> brokers = JavaConversions.seqAsJavaList(zkUtils.getAllBrokersInCluster());
+    private Map<Integer, String> getRackAssignment(AdminClient adminClient) throws ExecutionException, InterruptedException {
         Map<Integer, String> rackAssignment = Maps.newHashMap();
         if (!disableRackAwareness) {
-            for (Broker broker : brokers) {
-                scala.Option<String> rack = broker.rack();
-                if (rack.isDefined()) {
-                    rackAssignment.put(broker.id(), rack.get());
+            for (Node node : adminClient.describeCluster().nodes().get()) {
+                if (node.hasRack()) {
+                    rackAssignment.put(node.id(), node.rack());
                 }
             }
         }
@@ -253,12 +266,12 @@ public class KafkaAssignmentGenerator {
         return topics != null ? Lists.newLinkedList(SPLITTER.split(topics)) : null;
     }
 
-    private void runTool(String[] args) throws JSONException {
+    private void runTool(String[] args) throws JSONException, ExecutionException, InterruptedException {
         // Get and validate all arguments from args4j
         CmdLineParser parser = new CmdLineParser(this);
         try {
             parser.parseArgument(args);
-            Preconditions.checkNotNull(zkConnectString);
+            Preconditions.checkNotNull(bootstrapServers);
             Preconditions.checkNotNull(mode);
             Preconditions.checkArgument(brokerIds == null || brokerHostnames == null,
                     "--kafka_assigner_integer_broker_ids and " +
@@ -269,36 +282,31 @@ public class KafkaAssignmentGenerator {
             return;
         }
         List<String> topics = getTopics();
+        Properties props = new Properties();
+        props.put("bootstrap.servers", bootstrapServers);
 
-        ZkClient zkClient = new ZkClient(zkConnectString, 10000, 10000,
-                ZKStringSerializer$.MODULE$);
-        zkClient.waitUntilConnected();
-        ZkUtils zkUtils = ZkUtils.apply(zkClient, false);
-
-        try {
-            Set<Integer> brokerIdSet = getBrokerIds(zkUtils);
-            Set<Integer> excludedBrokerIdSet = getExcludedBrokerIds(zkUtils);
-            Map<Integer, String> rackAssignment = getRackAssignment(zkUtils);
+        try (AdminClient adminClient = AdminClient.create(props)) {
+            Set<Integer> brokerIdSet = getBrokerIds(adminClient);
+            Set<Integer> excludedBrokerIdSet = getExcludedBrokerIds(adminClient);
+            Map<Integer, String> rackAssignment = getRackAssignment(adminClient);
             switch (mode) {
                 case PRINT_CURRENT_ASSIGNMENT:
-                    printCurrentAssignment(zkUtils, topics);
+                    printCurrentAssignment(adminClient, topics);
                     break;
                 case PRINT_CURRENT_BROKERS:
-                    printCurrentBrokers(zkUtils);
+                    printCurrentBrokers(adminClient);
                     break;
                 case PRINT_REASSIGNMENT:
-                    printLeastDisruptiveReassignment(zkUtils, topics, brokerIdSet,
+                    printLeastDisruptiveReassignment(adminClient, topics, brokerIdSet,
                             excludedBrokerIdSet, rackAssignment, desiredReplicationFactor);
                     break;
                 default:
                     throw new UnsupportedOperationException("Invalid mode: " + mode);
             }
-        } finally {
-            zkUtils.close();
         }
     }
 
-    public static void main(String[] args) throws JSONException {
+    public static void main(String[] args) throws JSONException, ExecutionException, InterruptedException {
         new KafkaAssignmentGenerator().runTool(args);
     }
 }

@@ -27,6 +27,9 @@ Requires Java 1.7+
 
 ```
 ./kafka-assignment-generator.sh [options...] arguments...
+ --bootstrap_server VAL                 : Kafka Broker(s) to bootstrap
+                                          connection (comma-separated host:port
+                                          pairs)
  --broker_hosts VAL                     : comma-separated list of broker
                                           hostnames (instead of broker IDs)
  --broker_hosts_to_remove VAL           : comma-separated list of broker
@@ -40,13 +43,11 @@ Requires Java 1.7+
  PRINT_CURRENT_BROKERS |                  ENT, PRINT_CURRENT_BROKERS,
  PRINT_REASSIGNMENT]                      PRINT_REASSIGNMENT)
  --topics VAL                           : comma-separated list of topics
- --zk_string VAL                        : ZK quorum as comma-separated
-                                          host:port pairs
 ```
 
 ### Example: reassign partitions to all live hosts
 ```
-./kafka-assignment-generator.sh --zk_string my-zk-host:2181 --mode PRINT_REASSIGNMENT
+./kafka-assignment-generator.sh --bootstrap_server my-kafka-host:9092 --mode PRINT_REASSIGNMENT
 ```
 
 The output JSON can then be fed into Kafka's reassign partitions command. See [here](http://kafka.apache.org/0100/ops.html#basic_ops_partitionassignment) for instructions.
@@ -54,7 +55,7 @@ The output JSON can then be fed into Kafka's reassign partitions command. See [h
 ### Example: reassign partitions to all but a few live hosts
 This mode is useful for decommissioning or replacing a node. The partitions will be assigned to all live hosts, excluding the hosts that are specified.
 ```
-./kafka-assignment-generator.sh --zk_string my-zk-host:2181 --mode PRINT_REASSIGNMENT --broker_hosts_to_remove misbehaving-host1,misbehaving-host2
+./kafka-assignment-generator.sh --bootstrap_server my-kafka-host:9092 --mode PRINT_REASSIGNMENT --broker_hosts_to_remove misbehaving-host1,misbehaving-host2
 ```
 
 The output JSON can then be fed into Kafka's reassign partitions command. See [here](http://kafka.apache.org/0100/ops.html#basic_ops_partitionassignment) for instructions.
@@ -62,19 +63,19 @@ The output JSON can then be fed into Kafka's reassign partitions command. See [h
 ### Example: reassign partitions to specific hosts
 Note that in this mode, it is expected that every host that should own partitions should be specified, including existing ones.
 ```
-./kafka-assignment-generator.sh --zk_string my-zk-host:2181 --mode PRINT_REASSIGNMENT --broker_hosts host1,host2,host3
+./kafka-assignment-generator.sh --bootstrap_server my-kafka-host:9092 --mode PRINT_REASSIGNMENT --broker_hosts host1,host2,host3
 ```
 
 The output JSON can then be fed into Kafka's reassign partitions command. See [here](http://kafka.apache.org/0100/ops.html#basic_ops_partitionassignment) for instructions.
 
 ### Example: print current brokers
 ```
-./kafka-assignment-generator.sh --zk_string my-zk-host:2181 --mode PRINT_CURRENT_BROKERS
+./kafka-assignment-generator.sh --bootstrap_server my-kafka-host:9092 --mode PRINT_CURRENT_BROKERS
 ```
 
 ### Example: print current assignment
 ```
-./kafka-assignment-generator.sh --zk_string my-zk-host:2181 --mode PRINT_CURRENT_ASSIGNMENT
+./kafka-assignment-generator.sh --bootstrap_server my-kafka-host:9092 --mode PRINT_CURRENT_ASSIGNMENT
 ```
 
 # Building

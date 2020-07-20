@@ -1,16 +1,11 @@
 package siftscience.kafka.tools;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Sets;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import com.google.common.base.Function;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-
-import scala.collection.JavaConversions;
 
 /**
  * Utilities for assigning topic partitions evenly to brokers.
@@ -69,45 +64,5 @@ public class KafkaTopicAssigner {
                 ") than available brokers!");
         return KafkaAssignmentStrategy.getRackAwareAssignment(topic, currentAssignment,
                 rackAssignment, brokers, partitions, replicationFactor, assignmentContext);
-    }
-
-    /**
-     * Convert a Scala Kafka partition assignment into a Java one.
-     * @param topicMap the output from ZkUtils#getPartitionAssignmentForTopics
-     * @return a Java map representing the same data
-     */
-    static Map<String, Map<Integer, List<Integer>>> topicMapToJavaMap(
-            scala.collection.Map<String,
-                    scala.collection.Map<Object,
-                            scala.collection.Seq<Object>>> topicMap) {
-        // We can actually use utilities like Maps#transformEntries, but since that doesn't allow
-        // changing the key type from Object to Integer, this code just goes into each map and makes
-        // copies all the way down. Copying is also useful for avoiding possible repeated lazy
-        // evaluations by the rebalancing algorithm.
-        Map<String, Map<Integer, List<Integer>>> resultTopicMap = Maps.newHashMap();
-        Map<String, scala.collection.Map<Object, scala.collection.Seq<Object>>> convertedTopicMap =
-                JavaConversions.mapAsJavaMap(topicMap);
-        for (Map.Entry<String, scala.collection.Map<Object,
-                scala.collection.Seq<Object>>> topicMapEntry : convertedTopicMap.entrySet()) {
-            String topic = topicMapEntry.getKey();
-            Map<Object, scala.collection.Seq<Object>> convertedPartitionMap =
-                    JavaConversions.mapAsJavaMap(topicMapEntry.getValue());
-            Map<Integer, List<Integer>> resultPartitionMap = Maps.newHashMap();
-            for (Map.Entry<Object, scala.collection.Seq<Object>> partitionMapEntry :
-                    convertedPartitionMap.entrySet()) {
-                Integer partition = (Integer) partitionMapEntry.getKey();
-                List<Integer> replicaList = Lists.newArrayList(Lists.transform(
-                        JavaConversions.seqAsJavaList(partitionMapEntry.getValue()),
-                        new Function<Object, Integer>() {
-                            @Override
-                            public Integer apply(Object raw) {
-                                return (Integer) raw;
-                            }
-                        }));
-                resultPartitionMap.put(partition, replicaList);
-            }
-            resultTopicMap.put(topic, resultPartitionMap);
-        }
-        return resultTopicMap;
     }
 }
